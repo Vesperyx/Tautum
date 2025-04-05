@@ -1,0 +1,56 @@
+import numpy as np
+from scipy.optimize import minimize
+
+# Fundamental time quantum (unused directly here, but conceptually underlies tau->phase map)
+tau_q = 2.203e-15
+
+# Known amplitudes (e.g. masses or couplings) for N sectors
+r_meas = np.array([9.109e-31, 1.673e-27, 3.167e-35, 1.776e-27])
+
+N = len(r_meas)
+
+# We want to find phases theta_i and possibly small corrections to radii r_i
+# such that sum(theta_i) = 2π, and r_i ~ r_meas
+
+# Stack variables x = [theta_0 ... theta_{N-1}, dr_0 ... dr_{N-1}]
+def pack(theta, dr):
+    return np.concatenate([theta, dr])
+
+def unpack(x):
+    theta = x[:N]
+    dr    = x[N:]
+    return theta, dr
+
+# Objective: minimize deviation of corrected radii (r_meas + dr) from measured,
+# subject to the phase‐sum constraint.
+def objective(x):
+    theta, dr = unpack(x)
+    # penalty for deviating radii
+    rad_err = np.sum((dr/r_meas)**2)
+    # (optional) penalty for phase non‑uniformity or other criteria
+    return rad_err
+
+# Constraint: sum(theta) = 2π
+def phase_sum_constraint(x):
+    theta, _ = unpack(x)
+    return np.sum(theta) - 2*np.pi
+
+# Initial guess: even partition of phase, zero dr
+theta0 = np.full(N, 2*np.pi/N)
+dr0    = np.zeros(N)
+x0 = pack(theta0, dr0)
+
+cons = ({'type':'eq', 'fun': phase_sum_constraint})
+
+# Bounds: theta_i in [0,2π], dr small relative to r_meas
+bnds = [(0, 2*np.pi)]*N + [(-0.1*r, 0.1*r) for r in r_meas]
+
+res = minimize(objective, x0, bounds=bnds, constraints=cons)
+
+theta_opt, dr_opt = unpack(res.x)
+r_opt = r_meas + dr_opt
+
+print("Optimized phases (radians):", theta_opt)
+print("Sum of phases:", np.sum(theta_opt))
+print("Corrected radii:", r_opt)
+print("Relative correction:", dr_opt/r_meas)
